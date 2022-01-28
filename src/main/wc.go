@@ -1,18 +1,45 @@
+// Reference: https://pkg.go.dev/strings#FieldsFunc
 package main
 
 import "os"
 import "fmt"
 import "mapreduce"
 import "container/list"
+import "strings"
+import "unicode" 
+import "strconv"
+//import "reflect"
 
 // our simplified version of MapReduce does not supply a
 // key to the Map function, as in the paper; only a value,
 // which is a part of the input file contents
 func Map(value string) *list.List {
+
+	f := func(c rune) bool {
+		return !unicode.IsLetter(c)
+	}
+	s := strings.FieldsFunc(value, f)
+	l := list.New()
+
+	for _,v:= range s{
+		var kv = mapreduce.KeyValue{v, "1"}
+		l.PushBack(kv)
+	}
+	return l
 }
 
 // iterate over list and add values
 func Reduce(key string, values *list.List) string {
+	//l := list.New()
+	var res int = 0
+	for val := values.Front(); val!=nil; val = val.Next(){
+		keyValue := val.Value.(string)
+		intValue, err := strconv.Atoi(keyValue)
+		if err == nil{
+			res+=intValue
+		}
+	} 
+	return strconv.Itoa(res)
 }
 
 // Can be run in 3 ways:
