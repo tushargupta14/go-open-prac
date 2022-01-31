@@ -56,6 +56,7 @@ type MapReduce struct {
   MasterAddress string
   registerChannel chan string
   DoneChannel chan bool
+  TaskChannel chan bool
   alive bool
   l net.Listener
   stats *list.List
@@ -75,6 +76,7 @@ func InitMapReduce(nmap int, nreduce int,
   mr.MasterAddress = master
   mr.alive = true
   mr.registerChannel = make(chan string)
+  mr.TaskChannel = make(chan bool, nMap)
   mr.DoneChannel = make(chan bool)
 
   // initialize any additional state here
@@ -124,7 +126,7 @@ func (mr *MapReduce) StartRegistrationServer() {
           conn.Close()
         }()
       } else {
-        DPrintf("RegistrationServer: accept error", err)
+        DPrintf("RegistrationServer: accept error %s", err)
         break
       }
     }
@@ -193,7 +195,9 @@ func hash(s string) uint32 {
 // partitions.
 func DoMap(JobNumber int, fileName string,
            nreduce int, Map func(string) *list.List) {
+
   name := MapName(fileName, JobNumber)
+  //fmt.Println("file name", name)
   file, err := os.Open(name)
   if err != nil {
     log.Fatal("DoMap: ", err);
@@ -229,6 +233,7 @@ func DoMap(JobNumber int, fileName string,
     }
     file.Close()
   }
+  fmt.Println("DoMap:",JobNumber,"Done")
 }
 
 func MergeName(fileName string,  ReduceJob int) string {
@@ -371,6 +376,7 @@ func (mr *MapReduce) Run() {
   fmt.Printf("Run mapreduce job %s %s\n", mr.MasterAddress, mr.file)
 
   mr.Split(mr.file)
+  fmt.Println("Going to RunMaster")
   mr.stats = mr.RunMaster()
   mr.Merge()
   mr.CleanupRegistration()

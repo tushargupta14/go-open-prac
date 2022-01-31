@@ -1,7 +1,6 @@
 package mapreduce
 import "container/list"
 import "fmt"
-
 type WorkerInfo struct {
   address string
   // You can add definitions here.
@@ -26,7 +25,56 @@ func (mr *MapReduce) KillWorkers() *list.List {
   return l
 }
 
+func DoTask(jobNum int, mr *MapReduce, jobType JobType){
+
+  doJobargs := DoJobArgs{mr.file, jobType, jobNum, mr.nReduce}
+  var doJobReply DoJobReply
+  worker := <- mr.registerChannel
+  
+  status:= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
+  
+  for status == false{
+    fmt.Println("Worker failed")
+    worker = <- mr.registerChannel
+    status= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
+    if status{
+      break
+    }
+  }
+    // worker is available
+  mr.TaskChannel <- true
+  mr.registerChannel <- worker
+}
+
 func (mr *MapReduce) RunMaster() *list.List {
   // Your code here
+
+  // Distribute map jobs
+
+  for i:=0 ; i < mr.nMap; i++ {
+    go DoTask(i, mr, "Map")
+  }
+
+  mapJobs:=mr.nMap
+
+  for mapJobs > 0{
+    fmt.Println("mapJobs", mapJobs)
+    <- mr.TaskChannel
+    mapJobs-=1
+  }
+
+  fmt.Println("Starting the Reduce Phase")
+  for j:=0 ; j < mr.nReduce; j++{
+    go DoTask(j, mr, "Reduce")
+  }
+  
+  reduceJobs:=mr.nReduce
+
+  for reduceJobs > 0{
+    <- mr.TaskChannel
+    reduceJobs--
+  }
+
+  //mr.DoneChannel <- true
   return mr.KillWorkers()
 }
