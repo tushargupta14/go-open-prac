@@ -76,7 +76,7 @@ func InitMapReduce(nmap int, nreduce int,
   mr.MasterAddress = master
   mr.alive = true
   mr.registerChannel = make(chan string)
-  mr.TaskChannel = make(chan bool, nMap)
+  mr.TaskChannel = make(chan bool)
   mr.DoneChannel = make(chan bool)
 
   // initialize any additional state here
@@ -233,7 +233,7 @@ func DoMap(JobNumber int, fileName string,
     }
     file.Close()
   }
-  fmt.Println("DoMap:",JobNumber,"Done")
+  //fmt.Println("DoMap:",JobNumber,"Done")
 }
 
 func MergeName(fileName string,  ReduceJob int) string {
@@ -283,6 +283,7 @@ func DoReduce(job int, fileName string, nmap int,
     enc.Encode(KeyValue{k, res})
   }
   file.Close()
+  //fmt.Println("DoReduce:",job,"Done")
 }
 
 // Merge the results of the reduce jobs

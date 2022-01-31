@@ -25,25 +25,33 @@ func (mr *MapReduce) KillWorkers() *list.List {
   return l
 }
 
-func DoTask(jobNum int, mr *MapReduce, jobType JobType){
+func DoTask(jobNum int, mr *MapReduce, jobType string){
 
-  doJobargs := DoJobArgs{mr.file, jobType, jobNum, mr.nReduce}
+  var doJobargs DoJobArgs
   var doJobReply DoJobReply
-  worker := <- mr.registerChannel
-  
-  status:= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
-  
-  for status == false{
-    fmt.Println("Worker failed")
-    worker = <- mr.registerChannel
-    status= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
-    if status{
-      break
-    }
+
+  switch jobType{
+    case Map: 
+      doJobargs = DoJobArgs{mr.file, "Map", jobNum, mr.nReduce}
+    case Reduce: 
+      doJobargs = DoJobArgs{mr.file, "Reduce", jobNum, mr.nMap}
   }
-    // worker is available
-  mr.TaskChannel <- true
-  mr.registerChannel <- worker
+  
+  worker := <- mr.registerChannel
+  status:= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
+  // for status == false{
+  //   fmt.Println("Worker failed")
+  //   worker = <- mr.registerChannel
+  //   status= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
+  //   if status{
+  //     break
+  //   }
+  // }
+  if status{
+    mr.TaskChannel <- true
+    mr.registerChannel <- worker  
+  }
+  
 }
 
 func (mr *MapReduce) RunMaster() *list.List {
@@ -58,12 +66,12 @@ func (mr *MapReduce) RunMaster() *list.List {
   mapJobs:=mr.nMap
 
   for mapJobs > 0{
-    fmt.Println("mapJobs", mapJobs)
+    //fmt.Println("mapJobs", mapJobs)
     <- mr.TaskChannel
     mapJobs-=1
   }
 
-  fmt.Println("Starting the Reduce Phase")
+  //fmt.Println("Starting the Reduce Phase")
   for j:=0 ; j < mr.nReduce; j++{
     go DoTask(j, mr, "Reduce")
   }
@@ -71,10 +79,10 @@ func (mr *MapReduce) RunMaster() *list.List {
   reduceJobs:=mr.nReduce
 
   for reduceJobs > 0{
+    //fmt.Println("reduceJobs", reduceJobs)
     <- mr.TaskChannel
     reduceJobs--
   }
-
   //mr.DoneChannel <- true
   return mr.KillWorkers()
 }
