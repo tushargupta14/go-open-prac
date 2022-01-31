@@ -39,14 +39,14 @@ func DoTask(jobNum int, mr *MapReduce, jobType string){
   
   worker := <- mr.registerChannel
   status:= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
-  // for status == false{
-  //   fmt.Println("Worker failed")
-  //   worker = <- mr.registerChannel
-  //   status= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
-  //   if status{
-  //     break
-  //   }
-  // }
+  for status == false{
+    fmt.Println("Worker failed")
+    worker = <- mr.registerChannel
+    status= call(worker,"Worker.DoJob", &doJobargs, &doJobReply)
+    if status{
+      break
+    }
+  }
   if status{
     mr.TaskChannel <- true
     mr.registerChannel <- worker  
