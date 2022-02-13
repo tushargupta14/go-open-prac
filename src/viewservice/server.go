@@ -41,18 +41,25 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
   client := args.Me
   vs.time_map[client] = time.Now()
 
+  //fmt.Println("Pinged By", client, viewnum)
   if client == vs.curr_primary {
-    fmt.Println("Viewnum:", viewnum, "Curr view", vs.curr_view)
+    //fmt.Println("Viewnum:", viewnum, "Curr view", vs.curr_view)
     if viewnum == vs.curr_view {
       vs.is_ack = true
       if vs.curr_backup == "" && vs.idle_server!="" {
         vs.curr_backup = vs.idle_server
+        vs.idle_server = ""
         vs.curr_view++
         vs.is_ack = false
-        fmt.Println("Backup server", vs.curr_backup)
+        //fmt.Println("Backup server", vs.curr_backup)
       }
       reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
       return nil
+    } else if viewnum!=0 && viewnum < vs.curr_view && vs.is_ack {
+        //fmt.Println("Here")
+        reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
+        vs.is_ack = false
+        return nil
     } else if viewnum == 0 {
       if vs.is_ack {
         vs.curr_primary = vs.curr_backup
@@ -76,7 +83,7 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
       reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
     } else {
       vs.idle_server = client
-      fmt.Println("Idle server", vs.idle_server)
+      //fmt.Println("Idle server", vs.idle_server)
       reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
       return nil
     }
@@ -102,13 +109,24 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 //
 func (vs *ViewServer) tick() {
 
-  // Keep checking Primary.
   vs.mu.Lock()
   defer vs.mu.Unlock()
-  for i := 0; i < DeadPings; i++ {
-    fmt.Printf("You are in tick\n")
 
-  }
+  if vs.curr_primary!= "" && time.Since(vs.time_map[vs.curr_primary]) > DeadPings * PingInterval {
+    // Primary Dead
+    //fmt.Println("Primary Failed")
+    vs.curr_primary = vs.curr_backup
+    vs.curr_backup = func() (string){
+      if vs.idle_server != ""{
+        idle := vs.idle_server
+        vs.idle_server = ""
+        return idle
+      } else{
+        return ""
+      }
+    }()
+    vs.curr_view++
+  } 
 }
 
 //
