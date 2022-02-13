@@ -1,4 +1,3 @@
-
 package viewservice
 
 import "net"
@@ -10,22 +9,78 @@ import "fmt"
 import "os"
 
 type ViewServer struct {
-  mu sync.Mutex
-  l net.Listener
-  dead bool
-  me string
-
-
+  mu           sync.Mutex
+  l            net.Listener
+  dead         bool
+  me           string
+  curr_view    uint
+  is_ack       bool
+  curr_primary string
+  curr_backup  string
+  time_map     map[string]time.Time
+  idle_server  string
   // Your declarations here.
 }
 
 //
 // server Ping RPC handler.
 //
+
+func (self ViewServer) increment() {
+  // https://go.dev/play/
+  self.curr_view++
+}
+
 func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
   // Your code here.
+  vs.mu.Lock()
+  defer vs.mu.Unlock()
 
+  viewnum := args.Viewnum
+  client := args.Me
+  vs.time_map[client] = time.Now()
+
+  if client == vs.curr_primary {
+    fmt.Println("Viewnum:", viewnum, "Curr view", vs.curr_view)
+    if viewnum == vs.curr_view {
+      vs.is_ack = true
+      if vs.curr_backup == "" && vs.idle_server!="" {
+        vs.curr_backup = vs.idle_server
+        vs.curr_view++
+        vs.is_ack = false
+        fmt.Println("Backup server", vs.curr_backup)
+      }
+      reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
+      return nil
+    } else if viewnum == 0 {
+      if vs.is_ack {
+        vs.curr_primary = vs.curr_backup
+        vs.curr_backup = ""
+        vs.is_ack = false
+        vs.curr_view++
+        reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
+        return nil
+      }
+    }
+  } else if client == vs.curr_backup {
+    reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
+    return nil
+  } else if viewnum == 0 {
+    // Idle server
+    if vs.curr_primary == "" {
+      vs.curr_primary = client
+      vs.is_ack = false
+      vs.curr_view++
+      //fmt.Printf("Here")
+      reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
+    } else {
+      vs.idle_server = client
+      fmt.Println("Idle server", vs.idle_server)
+      reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
+      return nil
+    }
+  }
   return nil
 }
 
@@ -35,10 +90,10 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 
   // Your code here.
+  reply.View = View{vs.curr_view, vs.curr_primary, vs.curr_backup}
 
   return nil
 }
-
 
 //
 // tick() is called once per PingInterval; it should notice
@@ -47,7 +102,13 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 //
 func (vs *ViewServer) tick() {
 
-  // Your code here.
+  // Keep checking Primary.
+  vs.mu.Lock()
+  defer vs.mu.Unlock()
+  for i := 0; i < DeadPings; i++ {
+    fmt.Printf("You are in tick\n")
+
+  }
 }
 
 //
@@ -64,7 +125,11 @@ func StartServer(me string) *ViewServer {
   vs := new(ViewServer)
   vs.me = me
   // Your vs.* initializations here.
-
+  vs.curr_view = 0
+  vs.curr_primary = ""
+  vs.curr_backup = ""
+  vs.is_ack = false
+  vs.time_map = make(map[string]time.Time)
   // tell net/rpc about our RPC server and handlers.
   rpcs := rpc.NewServer()
   rpcs.Register(vs)
@@ -72,9 +137,9 @@ func StartServer(me string) *ViewServer {
   // prepare to receive connections from clients.
   // change "unix" to "tcp" to use over a network.
   os.Remove(vs.me) // only needed for "unix"
-  l, e := net.Listen("unix", vs.me);
+  l, e := net.Listen("unix", vs.me)
   if e != nil {
-    log.Fatal("listen error: ", e);
+    log.Fatal("listen error: ", e)
   }
   vs.l = l
 

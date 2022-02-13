@@ -61,10 +61,10 @@ func Test1(t *testing.T) {
   }
   check(t, ck1, ck1.me, "", 1)
   fmt.Printf("  ... Passed\n")
-
+    
   // very first backup
   fmt.Printf("Test: First backup ...\n")
-
+  
   {
     vx, _ := ck1.Get()
     for i := 0; i < DeadPings * 2; i++ {
