@@ -61,10 +61,10 @@ func Test1(t *testing.T) {
   }
   check(t, ck1, ck1.me, "", 1)
   fmt.Printf("  ... Passed\n")
-    
+
   // very first backup
   fmt.Printf("Test: First backup ...\n")
-  
+
   {
     vx, _ := ck1.Get()
     for i := 0; i < DeadPings * 2; i++ {
@@ -190,6 +190,7 @@ func Test1(t *testing.T) {
       time.Sleep(PingInterval)
     }
     check(t, ck1, ck3.me, ck1.me, vx.Viewnum+1)
+    //fmt.Printf("Here")
     vy, _ := ck1.Get()
     // ck3 is the primary, but it never acked.
     // let ck3 die. check that ck1 is not promoted.
