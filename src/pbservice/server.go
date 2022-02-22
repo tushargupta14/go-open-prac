@@ -11,7 +11,7 @@ import "syscall"
 import "math/rand"
 import "sync"
 
-//import "strconv"
+import "strconv"
 
 // Debugging
 const Debug = 0
@@ -31,16 +31,154 @@ type PBServer struct {
   vs *viewservice.Clerk
   done sync.WaitGroup
   finish chan interface{}
+  view viewservice.View
+  mu sync.Mutex
+  kvstore map[string]string
+  idstore map[int64]string
   // Your declarations here.
+}
+
+func (pb *PBServer) ForwardPut(args *ForwardArgs, reply *ForwardReply) error {
+
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
+
+  if pb.view.Backup == pb.me && pb.view.Backup != ""{
+    if args.DoHash == false{
+      pb.kvstore[args.Key] = args.Value
+      reply.Err = "OK"
+      return nil
+    } else if args.DoHash == true{
+      pb.kvstore[args.Key] = args.Value
+      pb.idstore[args.RequestID] = args.Value
+      reply.Err = "OK"
+      return nil
+    }
+
+  } else {
+    reply.Err = "ErrWrongServer"
+    return nil
+  }
+
+  return nil
+}
+
+func (pb *PBServer) compute_hash(key string, value string) (string, string){
+  previous_value, ok := pb.kvstore[key] 
+  if !ok {
+    previous_value = ""
+  }
+  h := hash(previous_value + value)
+  new_value := strconv.Itoa(int(h))
+  return new_value, previous_value
 }
 
 func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
   // Your code here.
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
+
+  if pb.me == pb.view.Primary && pb.view.Primary != ""{
+    //fmt.Println("Inside Put")
+    if args.DoHash == false{
+      // Normal Put function
+      if pb.view.Backup != ""{
+        //fmt.Println("Backup Found, Forward Put call")
+        fargs := ForwardArgs{args.Key, args.Value, false, args.RequestID}
+        var freply ForwardReply
+
+        ok := call(pb.view.Backup, "PBServer.ForwardPut", &fargs, &freply)
+        if !ok || freply.Err != OK{
+          return nil
+        }
+      }
+      pb.kvstore[args.Key] = args.Value
+      reply.Err = "OK"
+      return nil
+
+    } else if args.DoHash == true{
+      
+      _, done := pb.idstore[args.RequestID]
+
+      if done{
+        // request completed
+        //fmt.Println("Request already completed")
+        reply.Err = "OK"
+        reply.PreviousValue = pb.idstore[args.RequestID]
+        return nil
+      }
+
+      new_value, previous_value := pb.compute_hash(args.Key, args.Value)
+      if pb.view.Backup != ""{
+        //fmt.Println("Backup Found, Forward Put call")
+        fargs := ForwardArgs{args.Key, new_value, true, args.RequestID}
+        var freply ForwardReply
+
+        ok := call(pb.view.Backup, "PBServer.ForwardPut", &fargs, &freply)
+        if !ok || freply.Err != OK{
+          return nil
+        }
+      }
+      
+      //fmt.Println("New", new_value, "Prev",previous_value)
+      pb.kvstore[args.Key] = new_value
+      reply.Err = "OK"
+      reply.PreviousValue = previous_value
+      pb.idstore[args.RequestID] = previous_value
+      return nil
+    }
+    } else {
+      // The current server is Backup
+      reply.Err = "ErrWrongServer"
+      return nil 
+    }
   return nil
 }
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
   // Your code here.
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
+
+  if pb.me == pb.view.Primary && pb.view.Primary != ""{
+
+    // if pb.view.Backup != ""{
+    //   // Forward request
+    //   // Set the Err
+    //   return nil
+    // }
+
+    if val, ok := pb.kvstore[args.Key]; ok{
+      reply.Err = "OK"
+      reply.Value = val
+      return nil
+    } else {
+      reply.Err = "ErrNoKey"
+      return nil
+    }
+
+  }
+
+  return nil
+}
+
+func (pb *PBServer) CopyDB(args *CopyArgs, reply *CopyReply) error {
+  // Your code here.
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
+
+  v, _ := pb.vs.Ping(pb.view.Viewnum)
+  pb.view = v
+
+  if v.Backup == pb.me && v.Backup != ""{
+    // Current Backup
+    pb.kvstore = args.KVstore
+    reply.Err = "OK"
+    return nil
+  } else {
+    reply.Err = "ErrWrongServer"
+    return nil
+  }
   return nil
 }
 
@@ -48,8 +186,33 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 // ping the viewserver periodically.
 func (pb *PBServer) tick() {
   // Your code here.
-}
+  pb.mu.Lock()
+  defer pb.mu.Unlock()
 
+  v, _ := pb.vs.Ping(pb.view.Viewnum)
+
+  //pb.view = v 
+  if v.Primary == pb.me{
+    curr_backup := pb.view.Backup
+    if curr_backup != v.Backup && v.Backup !=""{
+      // Sync both the servers
+      copyargs := CopyArgs{pb.kvstore}
+      var copyreply CopyReply
+      //fmt.Println("New backup found")
+
+      ok := call(v.Backup, "PBServer.CopyDB", &copyargs, &copyreply)
+      if copyreply.Err != OK || !ok{
+        fmt.Println("Copy Failed, Forward to Wrong server")
+      } 
+    }
+    pb.view = v
+    return 
+  }
+  
+  pb.view = v 
+  return
+  
+}
 
 // tell the server to shut itself down.
 // please do not change this function.
@@ -65,6 +228,11 @@ func StartServer(vshost string, me string) *PBServer {
   pb.vs = viewservice.MakeClerk(me, vshost)
   pb.finish = make(chan interface{})
   // Your pb.* initializations here.
+  pb.view.Viewnum = 0
+  pb.view.Primary = ""
+  pb.view.Backup = ""
+  pb.kvstore = make(map[string]string)
+  pb.idstore = make(map[int64]string)
 
   rpcs := rpc.NewServer()
   rpcs.Register(pb)

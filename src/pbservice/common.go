@@ -13,10 +13,31 @@ type PutArgs struct {
   Key string
   Value string
   DoHash bool // For PutHash
+  RequestID int64
   // You'll have to add definitions here.
 
   // Field names must start with capital letters,
   // otherwise RPC will break.
+}
+
+type ForwardArgs struct {
+  Key string
+  Value string
+  DoHash bool // For PutHash
+  RequestID int64
+}
+
+type ForwardReply struct {
+  Err Err
+  PreviousValue string
+}
+
+type CopyArgs struct {
+  KVstore map[string]string
+}
+
+type CopyReply struct {
+  Err Err
 }
 
 type PutReply struct {

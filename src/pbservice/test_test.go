@@ -51,8 +51,10 @@ func TestBasicFail(t *testing.T) {
   if vck.Primary() != s1.me {
     t.Fatal("first primary never formed view")
   }
-  
+  //fmt.Println("InTest, Primary", vck.Primary(), s1.me)
+  fmt.Printf("Primary Added\n")
   ck.Put("111", "v1")
+  //fmt.Printf("Value Put\n")
   check(ck, "111", "v1")
 
   ck.Put("2", "v2")
@@ -107,7 +109,8 @@ func TestBasicFail(t *testing.T) {
   if v.Primary != s2.me {
     t.Fatal("backup never switched to primary")
   }
-
+  
+  //fmt.Printf("Start checking for key in Backup\n")  
   check(ck, "1", "v1a")
   check(ck, "3", "33")
   check(ck, "4", "44")
@@ -170,12 +173,13 @@ func TestAtMostOnce(t *testing.T) {
   
   // give p+b time to ack, initialize
   time.Sleep(viewservice.PingInterval * viewservice.DeadPings)
-
+  //fmt.Println("--------------------------------------------------------------------------------------")
   ck := MakeClerk(vshost, "")
   k := "counter"
   val := ""
   for i := 0; i < 100; i++ {
     v := strconv.Itoa(i)
+    //fmt.Println(k, v)
     pv := ck.PutHash(k, v)
     if pv != val {
       t.Fatalf("ck.Puthash() returned %v but expected %v\n", pv, val)

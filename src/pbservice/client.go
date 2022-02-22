@@ -6,25 +6,30 @@ import "fmt"
 
 // You'll probably need to uncomment these:
 // import "time"
-// import "crypto/rand"
-// import "math/big"
+import "crypto/rand"
+import "math/big"
 
 
 
 type Clerk struct {
   vs *viewservice.Clerk
-  // Your declarations here
+  primary string// Your declarations here
 }
 
 
 func MakeClerk(vshost string, me string) *Clerk {
   ck := new(Clerk)
   ck.vs = viewservice.MakeClerk(me, vshost)
-  // Your ck.* initializations here
-
+  ck.primary = ck.vs.Primary()
   return ck
 }
 
+func nrand() int64 {
+  max := big.NewInt(int64(1) << 62)
+  bigx, _ := rand.Int(rand.Reader, max)
+  x := bigx.Int64()
+  return x
+ }
 
 //
 // call() sends an RPC to the rpcname handler on server srv
@@ -68,9 +73,26 @@ func call(srv string, rpcname string,
 //
 func (ck *Clerk) Get(key string) string {
 
-  // Your code here.
+  args := GetArgs{key}
+  var reply GetReply
 
-  return "???"
+  if ck.primary == ""{
+    ck.primary = ck.vs.Primary()
+  }
+
+  //fmt.Println(ck.primary)
+  ok := call(ck.primary, "PBServer.Get", &args, &reply)
+  //return reply.Value
+  for reply.Err != OK || ok == false{
+      if reply.Err == ErrNoKey{
+      return ""
+    }
+    ck.primary = ck.vs.Primary()
+
+    reply.Err = ""
+    ok = call(ck.primary, "PBServer.Get", &args, &reply)
+  }
+  return reply.Value
 }
 
 //
@@ -80,7 +102,25 @@ func (ck *Clerk) Get(key string) string {
 func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 
   // Your code here.
-  return "???"
+  uid := nrand()
+  args := PutArgs{key, value, dohash, uid}
+  var reply PutReply
+
+  if ck.primary == ""{
+    ck.primary = ck.vs.Primary()
+  }
+
+  //fmt.Println("Primary", ck.primary)
+
+  ok := call(ck.primary, "PBServer.Put", &args, &reply)
+
+  for reply.Err != OK || ok == false{
+    ck.primary = ck.vs.Primary()
+    //fmt.Println(ok, reply.Err)
+    reply.Err = ""
+    ok = call(ck.primary, "PBServer.Put", &args, &reply)
+  }
+  return reply.PreviousValue
 }
 
 func (ck *Clerk) Put(key string, value string) {
