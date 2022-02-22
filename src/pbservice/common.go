@@ -35,6 +35,7 @@ type ForwardReply struct {
 
 type CopyArgs struct {
   KVstore map[string]string
+  IDstore map[int64]string
 }
 
 type CopyReply struct {

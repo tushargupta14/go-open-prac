@@ -173,6 +173,7 @@ func (pb *PBServer) CopyDB(args *CopyArgs, reply *CopyReply) error {
   if v.Backup == pb.me && v.Backup != ""{
     // Current Backup
     pb.kvstore = args.KVstore
+    pb.idstore = args.IDstore
     reply.Err = "OK"
     return nil
   } else {
@@ -196,7 +197,7 @@ func (pb *PBServer) tick() {
     curr_backup := pb.view.Backup
     if curr_backup != v.Backup && v.Backup !=""{
       // Sync both the servers
-      copyargs := CopyArgs{pb.kvstore}
+      copyargs := CopyArgs{pb.kvstore, pb.idstore}
       var copyreply CopyReply
       //fmt.Println("New backup found")
       ok := call(v.Backup, "PBServer.CopyDB", &copyargs, &copyreply)
