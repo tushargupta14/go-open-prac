@@ -22,6 +22,7 @@ type PutArgs struct {
 
 type ForwardArgs struct {
   Key string
+  PreviousValue string
   Value string
   DoHash bool // For PutHash
   RequestID int64

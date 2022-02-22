@@ -50,7 +50,7 @@ func (pb *PBServer) ForwardPut(args *ForwardArgs, reply *ForwardReply) error {
       return nil
     } else if args.DoHash == true{
       pb.kvstore[args.Key] = args.Value
-      pb.idstore[args.RequestID] = args.Value
+      pb.idstore[args.RequestID] = args.PreviousValue
       reply.Err = "OK"
       return nil
     }
@@ -84,7 +84,7 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
       // Normal Put function
       if pb.view.Backup != ""{
         //fmt.Println("Backup Found, Forward Put call")
-        fargs := ForwardArgs{args.Key, args.Value, false, args.RequestID}
+        fargs := ForwardArgs{args.Key, args.Value, args.Value, false, args.RequestID}
         var freply ForwardReply
 
         ok := call(pb.view.Backup, "PBServer.ForwardPut", &fargs, &freply)
@@ -111,7 +111,7 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
       new_value, previous_value := pb.compute_hash(args.Key, args.Value)
       if pb.view.Backup != ""{
         //fmt.Println("Backup Found, Forward Put call")
-        fargs := ForwardArgs{args.Key, new_value, true, args.RequestID}
+        fargs := ForwardArgs{args.Key, previous_value, new_value, true, args.RequestID}
         var freply ForwardReply
 
         ok := call(pb.view.Backup, "PBServer.ForwardPut", &fargs, &freply)
@@ -199,11 +199,14 @@ func (pb *PBServer) tick() {
       copyargs := CopyArgs{pb.kvstore}
       var copyreply CopyReply
       //fmt.Println("New backup found")
-
       ok := call(v.Backup, "PBServer.CopyDB", &copyargs, &copyreply)
-      if copyreply.Err != OK || !ok{
-        fmt.Println("Copy Failed, Forward to Wrong server")
-      } 
+      for copyreply.Err != OK || ok == false {
+        copyreply.Err = ""
+        ok = call(v.Backup, "PBServer.CopyDB", &copyargs, &copyreply)
+      }
+      // if copyreply.Err != OK || !ok{
+      //   fmt.Println("Copy Failed, Forward to Wrong server")
+     
     }
     pb.view = v
     return 
