@@ -88,7 +88,7 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
         var freply ForwardReply
 
         ok := call(pb.view.Backup, "PBServer.ForwardPut", &fargs, &freply)
-        if !ok || freply.Err != OK{
+        if ok==false || freply.Err != OK{
           reply.Err = "ErrWrongServer"
           return nil
         }
