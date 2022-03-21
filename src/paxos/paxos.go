@@ -86,6 +86,7 @@ type AcceptReply struct{
 
 type DecideArgs struct{
   Seq int
+  Np int
   Na int
   Va interface{}
   Z_i int
@@ -298,10 +299,12 @@ func (px *Paxos) StartAgreement(seq int, v interface{}){
       if acceptreply.State == "ACCEPT_OK"{
           count_accept++
         }
-      acceptreply.State = ""
+      
       if acceptreply.Z_i > px.done_index[acceptreply.Index]{
         px.done_index[acceptreply.Index] = acceptreply.Z_i
       }
+      acceptreply.State = ""
+      acceptreply.Na = -1
     }
 
     if count_accept <= num_peers/2{
@@ -311,7 +314,7 @@ func (px *Paxos) StartAgreement(seq int, v interface{}){
     // Decide Phase
     //fmt.Println("Starting Decide Phase for seq: ", seq)
     max_done = px.done_index[px.me]
-    decideargs := DecideArgs{Seq: seq, Na: propose_n, Va: v_dash, Z_i: max_done, Index: px.me}
+    decideargs := DecideArgs{Seq: seq, Np:propose_n, Na: propose_n, Va: v_dash, Z_i: max_done, Index: px.me}
     var decidereply DecideReply
 
     for index,peer := range px.peers{
