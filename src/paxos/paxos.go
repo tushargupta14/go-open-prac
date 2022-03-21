@@ -163,8 +163,8 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
     reply.Va = instance.va
   } else {
     reply.State = "PREPARE_REJECT"
-    reply.Na = instance.na
-    reply.Va = instance.va
+    //reply.Na = -1
+    //reply.Va = instance.va
   }
   reply.Z_i = px.done_index[px.me]
   reply.Index = px.me
@@ -195,7 +195,7 @@ func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
     reply.Na = args.N
   } else {
     reply.State = "ACCEPT_REJECT"
-    reply.Na = args.N
+    //reply.Na = args.N
   }
   reply.Z_i = px.done_index[px.me]
   reply.Index = px.me
@@ -215,7 +215,7 @@ func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
     instance = &Instance{-1, -1, nil, false}
     px.instance_map[args.Seq] = instance
   }
-
+  instance.np = args.Np
   instance.na = args.Na
   instance.va = args.Va
   instance.is_decided = true
@@ -262,16 +262,19 @@ func (px *Paxos) StartAgreement(seq int, v interface{}){
 
       if preparereply.State == "PREPARE_OK"{
           count_prepare++
-          if preparereply.Na > max_n && index != px.me{
+          if preparereply.Na > max_n {
+            //&& index != px.me
             max_n = preparereply.Na
             v_dash = preparereply.Va
           }
         }
-      preparereply.State = ""
+      
       if preparereply.Z_i > px.done_index[preparereply.Index]{
         px.done_index[preparereply.Index] = preparereply.Z_i
       }
-
+      preparereply.State = ""
+      preparereply.Na = -1
+      preparereply.Va = nil
     }
 
     if count_prepare <= num_peers/2{
