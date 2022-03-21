@@ -28,7 +28,7 @@ import "syscall"
 import "sync"
 import "fmt"
 import "math/rand"
-
+import "time"
 
 type Paxos struct {
   mu sync.Mutex
@@ -39,8 +39,63 @@ type Paxos struct {
   peers []string
   me int // index into peers[]
 
-
+  instance_map map[int]*Instance
+  seq_max int
+  done_index []int
+  //n_peers int
   // Your data here.
+}
+
+type Instance struct{
+  np int
+  na int
+  va interface{}
+  is_decided bool
+}
+
+
+type PrepareArgs struct{
+  Seq int
+  N int
+  Z_i int
+  Index int
+}
+
+type PrepareReply struct{
+  State string
+  Na int
+  Va interface{}
+  Z_i int
+  Index int
+}
+
+type AcceptArgs struct{
+  Seq int
+  N int
+  V interface{}
+  Z_i int
+  Index int
+}
+
+type AcceptReply struct{
+  State string
+  Na int
+  Z_i int
+  Index int
+}
+
+type DecideArgs struct{
+  Seq int
+  Na int
+  Va interface{}
+  Z_i int
+  Index int
+}
+
+type DecideReply struct{
+  State string
+  Z_i int
+  Index int
 }
 
 //
@@ -86,9 +141,211 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 // Start() returns right away; the application will
 // call Status() to find out if/when agreement
 // is reached.
-//
+ 
+func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
+  px.mu.Lock()
+  defer px.mu.Unlock()
+
+  if args.Z_i > px.done_index[args.Index]{
+    px.done_index[args.Index] = args.Z_i
+  }
+
+  instance, ok := px.instance_map[args.Seq]
+  if !ok {
+    instance = &Instance{-1, -1, nil, false}
+    px.instance_map[args.Seq] = instance
+  }
+  if args.N > instance.np{
+    instance.np = args.N
+    reply.State = "PREPARE_OK"
+    reply.Na = instance.na
+    reply.Va = instance.va
+  } else {
+    reply.State = "PREPARE_REJECT"
+    reply.Na = instance.na
+    reply.Va = instance.va
+  }
+  reply.Z_i = px.done_index[px.me]
+  reply.Index = px.me
+  return nil
+} 
+
+
+func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
+  px.mu.Lock()
+  defer px.mu.Unlock()
+
+  if args.Z_i > px.done_index[args.Index]{
+    px.done_index[args.Index] = args.Z_i
+  }
+
+  instance, ok := px.instance_map[args.Seq]
+  if !ok {
+    instance = &Instance{-1, -1, nil, false}
+    px.instance_map[args.Seq] = instance
+  }
+
+  if args.N >= instance.np{
+    instance.np = args.N
+    instance.na = args.N
+    instance.va = args.V
+
+    reply.State = "ACCEPT_OK"
+    reply.Na = args.N
+  } else {
+    reply.State = "ACCEPT_REJECT"
+    reply.Na = args.N
+  }
+  reply.Z_i = px.done_index[px.me]
+  reply.Index = px.me
+  return nil
+}
+
+func (px *Paxos) Decide(args *DecideArgs, reply *DecideReply) error {
+  px.mu.Lock()
+  defer px.mu.Unlock()
+  //Update the Z_i from proposer
+  if args.Z_i > px.done_index[args.Index]{
+    px.done_index[args.Index] = args.Z_i
+  }
+
+  instance, ok := px.instance_map[args.Seq]
+  if !ok {
+    instance = &Instance{-1, -1, nil, false}
+    px.instance_map[args.Seq] = instance
+  }
+
+  instance.na = args.Na
+  instance.va = args.Va
+  instance.is_decided = true
+  reply.Z_i = px.done_index[px.me]
+  reply.Index = px.me
+  return nil
+}
+
+func (px *Paxos) StartAgreement(seq int, v interface{}){
+
+  num_peers := len(px.peers)
+  instance := &Instance{np: -1, na: -1, va: nil, is_decided: false}
+  px.mu.Lock()
+  px.instance_map[seq] = instance
+  px.mu.Unlock()
+  //decided, _ := px.Status(seq)
+  to := 10 * time.Millisecond
+  for !instance.is_decided{
+    // Chosse n
+    if px.dead{
+      return
+    }
+    time.Sleep(to)
+    if to < time.Second {
+      to *= 2
+    }
+    propose_n := instance.np + 1 + px.me
+    //fmt.Println("Starting Prepare Phase for seq: ", seq)
+    
+    max_done := px.done_index[px.me]
+    prepareargs := PrepareArgs{seq, propose_n, max_done, px.me}
+    var preparereply PrepareReply
+    count_prepare := 0 
+    max_n := -100
+    var v_dash interface{}
+    // Prepare phase
+    for index,peer := range px.peers{
+
+      if index != px.me{
+        call(peer, "Paxos.Prepare", &prepareargs, &preparereply)
+      } else if index == px.me{  
+        px.Prepare(&prepareargs, &preparereply)
+      }
+
+      if preparereply.State == "PREPARE_OK"{
+          count_prepare++
+          if preparereply.Na > max_n && index != px.me{
+            max_n = preparereply.Na
+            v_dash = preparereply.Va
+          }
+        }
+      preparereply.State = ""
+      if preparereply.Z_i > px.done_index[preparereply.Index]{
+        px.done_index[preparereply.Index] = preparereply.Z_i
+      }
+
+    }
+
+    if count_prepare <= num_peers/2{
+      continue
+    }
+    if v_dash == nil{
+      v_dash = v
+    }
+    // Accept phase
+    //fmt.Println("Starting Accept Phase for seq: ", seq)
+    max_done = px.done_index[px.me]
+    acceptargs := AcceptArgs{seq, propose_n, v_dash, max_done, px.me}
+    var acceptreply AcceptReply
+    count_accept := 0 
+    
+    // Prepare phase
+    for index,peer := range px.peers{
+
+      if index != px.me{
+        call(peer, "Paxos.Accept", &acceptargs, &acceptreply)
+      } else if index == px.me{  
+        px.Accept(&acceptargs, &acceptreply)
+      }
+
+      if acceptreply.State == "ACCEPT_OK"{
+          count_accept++
+        }
+      acceptreply.State = ""
+      if acceptreply.Z_i > px.done_index[acceptreply.Index]{
+        px.done_index[acceptreply.Index] = acceptreply.Z_i
+      }
+    }
+
+    if count_accept <= num_peers/2{
+      continue
+    }
+    //fmt.Println("count_accept", count_accept)
+    // Decide Phase
+    //fmt.Println("Starting Decide Phase for seq: ", seq)
+    max_done = px.done_index[px.me]
+    decideargs := DecideArgs{Seq: seq, Na: propose_n, Va: v_dash, Z_i: max_done, Index: px.me}
+    var decidereply DecideReply
+
+    for index,peer := range px.peers{
+      //fmt.Println("Here")
+      if index != px.me{
+        call(peer, "Paxos.Decide", &decideargs, &decidereply)
+      } else if index == px.me{  
+        px.Decide(&decideargs, &decidereply)
+      }
+      if decidereply.Z_i > px.done_index[decidereply.Index]{
+        px.done_index[decidereply.Index] = decidereply.Z_i
+      }
+     }
+
+    instance.is_decided = true
+  } 
+  
+}
 func (px *Paxos) Start(seq int, v interface{}) {
   // Your code here.
+  //px.mu.Lock()
+  //defer px.mu.Unlock()
+  if seq < px.Min(){
+    return
+  }
+  if seq > px.seq_max{
+    px.seq_max = seq 
+  }
+  status, _ := px.Status(seq)
+  if status{
+    return
+  }
+
+  go px.StartAgreement(seq, v)
 }
 
 //
@@ -99,6 +356,11 @@ func (px *Paxos) Start(seq int, v interface{}) {
 //
 func (px *Paxos) Done(seq int) {
   // Your code here.
+  px.mu.Lock()
+  defer px.mu.Unlock()
+  if px.done_index[px.me] < seq{
+    px.done_index[px.me] = seq
+  }
 }
 
 //
@@ -108,7 +370,9 @@ func (px *Paxos) Done(seq int) {
 //
 func (px *Paxos) Max() int {
   // Your code here.
-  return 0
+  px.mu.Lock()
+  defer px.mu.Unlock()
+  return px.seq_max
 }
 
 //
@@ -141,7 +405,22 @@ func (px *Paxos) Max() int {
 // 
 func (px *Paxos) Min() int {
   // You code here.
-  return 0
+  px.mu.Lock()
+  defer px.mu.Unlock()
+
+  min_v := px.done_index[px.me]
+
+  for _,val := range px.done_index{
+    if val < min_v{
+      min_v = val
+    }
+  } 
+
+  for i:=0 ; i <= min_v; i++{
+    delete(px.instance_map, i)
+  }
+  return min_v + 1
+  //return 0
 }
 
 //
@@ -153,7 +432,14 @@ func (px *Paxos) Min() int {
 //
 func (px *Paxos) Status(seq int) (bool, interface{}) {
   // Your code here.
-  return false, nil
+  px.mu.Lock()
+  px.mu.Unlock()
+  instance, ok := px.instance_map[seq]
+  if !ok{
+    return false, nil
+  }
+  return instance.is_decided, instance.va
+  //
 }
 
 
@@ -178,8 +464,12 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
   px := &Paxos{}
   px.peers = peers
   px.me = me
-
-
+  px.instance_map = make(map[int]*Instance)
+  px.seq_max = -100
+  px.done_index = make([]int, len(peers))
+  for i:=0 ; i < len(peers); i++{
+    px.done_index[i] = -1
+  } 
   // Your initialization code here.
 
   if rpcs != nil {
