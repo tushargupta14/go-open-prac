@@ -101,13 +101,14 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
     if ok && reply.Err == "OK"{
        break
     }
+    reply.Err = ""
     i++
     if i >= len(ck.servers){
       i = 0
     }
   }
 
-  return ""
+  return reply.PreviousValue
 }
 
 func (ck *Clerk) Put(key string, value string) {

@@ -12,7 +12,7 @@ import "encoding/gob"
 import "math/rand"
 import "time"
 import "strconv"
-const Debug=0
+const Debug=1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
   if Debug > 0 {
@@ -107,7 +107,7 @@ func (kv *KVPaxos) Wait(seq int) Op {
 
 func (kv *KVPaxos) Apply(op Op) string{
   _, done := kv.idstore[op.RequestID]
-
+  //fmt.Println("Inside Apply", op)
   if op.Op_type == "Put" && !done{
     //_, done := kv.idstore[op.RequestID]
       kv.kvstore[op.Key] = op.Value
@@ -116,10 +116,13 @@ func (kv *KVPaxos) Apply(op Op) string{
       //fmt.Println(op.Key, kv.kvstore[op.Key])
     } else if op.Op_type == "Get" {
       return kv.kvstore[op.Key]
-    } else if op.Op_type == "PuHash" && !done{
+    } else if op.Op_type == "PutHash" && !done{
+
       new_value, previous_value := kv.compute_hash(op.Key, op.Value)
       kv.kvstore[op.Key] = new_value
       kv.idstore[op.RequestID] = previous_value
+      //fmt.Println(op.Key, op.Value, op.Op_type, previous_value, new_value)
+      return previous_value
     } 
 
   return ""
@@ -189,11 +192,12 @@ func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
 
       if v1.RequestID == op.RequestID{
         // The request has been completed
-        //kv.Apply(v1)
-
+        //fmt.Println("After this 2")
+        reply.PreviousValue = kv.Apply(v1)
         break
       }
       // Apply the operation
+      //fmt.Println("After this 1")
       kv.Apply(v1)
       seq_num+=1
       op = Op{args.Key, args.Value, seq_num, args.RequestID, "PutHash"}
@@ -202,18 +206,18 @@ func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
     //fmt.Println("PutHash consensus completed", seq_num, args.Key, args.Value)
     
     //////////////
-    _, done := kv.idstore[op.RequestID]
-    if !done {
-      new_value, previous_value := kv.compute_hash(args.Key, args.Value)
-      kv.kvstore[args.Key] = new_value
-      kv.idstore[args.RequestID] = previous_value
-      reply.PreviousValue = previous_value
-    } else {
-      reply.PreviousValue = kv.idstore[args.RequestID]
-    }
+    // _, done := kv.idstore[op.RequestID]
+    // if !done {
+    //   new_value, previous_value := kv.compute_hash(args.Key, args.Value)
+    //   kv.kvstore[args.Key] = new_value
+    //   kv.idstore[args.RequestID] = previous_value
+    //   reply.PreviousValue = previous_value
+    // } else {
+    //   reply.PreviousValue = kv.idstore[args.RequestID]
+    // }
     reply.Err = "OK"
     
-
+    //fmt.Println("Value returned-->", args.Key, args.Value, args.DoHash, reply.PreviousValue)
     kv.last_seq_done = seq_num
     kv.px.Done(seq_num)
     kv.px.Min()
