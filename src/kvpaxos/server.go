@@ -10,7 +10,8 @@ import "os"
 import "syscall"
 import "encoding/gob"
 import "math/rand"
-
+import "time"
+import "strconv"
 const Debug=0
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
@@ -29,6 +30,7 @@ type Op struct {
   Value string
   Seq int
   RequestID int64
+  Op_type string
 }
 
 type KVPaxos struct {
@@ -47,42 +49,90 @@ type KVPaxos struct {
 
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
   // Your code here.
+  kv.mu.Lock()
+  defer kv.mu.Unlock()
+
+  //fmt.Println("Start Get Key", args.Key)
+  seq_num := kv.last_seq_done + 1
+  op := Op{args.Key, "", seq_num, args.RequestID, "Get"}
+  //fmt.Println("Start() seq_num: ", seq_num)
+  for {
+
+    kv.px.Start(seq_num, op)
+    v1:= kv.Wait(seq_num)
+
+    if v1.RequestID == op.RequestID{
+      // The request has been completed
+      break
+    }
+
+    // Encountered an earlier Put operation from the Paxos log, Apply it
+    //fmt.Println("Operation, encountered", v1.Op_type, "Seq", v1.Seq, v1.Key, v1.Value)
+    kv.Apply(v1)
+
+    seq_num+=1
+    op = Op{args.Key, "", seq_num, args.RequestID, "Get"}
+  }
+
+  //fmt.Println("Get consensus completed")
+
+  _, ok := kv.kvstore[args.Key]
+  if ok {
+    reply.Value = kv.kvstore[args.Key]
+    reply.Err = "OK"
+  } else {
+    reply.Value = ""
+    reply.Err = "OK"
+  }
+  kv.last_seq_done = seq_num
+  kv.px.Done(kv.last_seq_done)
+  kv.px.Min()
+
   return nil
 }
 
-func (kv *KVPaxos) Wait(seq int) interface{}{
+func (kv *KVPaxos) Wait(seq int) Op {
   to := 10 * time.Millisecond
   for {
    decided, v1 := kv.px.Status(seq)
    if decided {
-     return v1
+     return v1.(Op)
    }
    time.Sleep(to)
    if to < 10 * time.Second {
-     to *= 2
+     to += 10 * time.Millisecond
    }
  }
 }
 
+func (kv *KVPaxos) Apply(op Op) string{
+  _, done := kv.idstore[op.RequestID]
 
-func (kv *KVPaxos) ForwardPut(key string , value string, requestID int64) error {
+  if op.Op_type == "Put" && !done{
+    //_, done := kv.idstore[op.RequestID]
+      kv.kvstore[op.Key] = op.Value
+      //kv.idstore[op.RequestID] = op.Value
 
-  kv.mu.Lock()
-  defer kv.mu.Unlock()
+      //fmt.Println(op.Key, kv.kvstore[op.Key])
+    } else if op.Op_type == "Get" {
+      return kv.kvstore[op.Key]
+    } else if op.Op_type == "PuHash" && !done{
+      new_value, previous_value := kv.compute_hash(op.Key, op.Value)
+      kv.kvstore[op.Key] = new_value
+      kv.idstore[op.RequestID] = previous_value
+    } 
 
-  if args.DoHash == false{
-      kv.kvstore[key] = value
-      kv.idstore[requestID] = value
-      return nil
-  } else if args.DoHash == true{
-      // pb.kvstore[args.Key] = args.Value
-      // pb.idstore[args.RequestID] = args.PreviousValue
-      // reply.Err = "OK"
-      fmt.Println("Implement Hash")
-      return nil
+  return ""
+}
+
+func (kv *KVPaxos) compute_hash(key string, value string) (string, string){
+  previous_value, ok := kv.kvstore[key] 
+  if !ok {
+    previous_value = ""
   }
-
-  return nil
+  h := hash(previous_value + value)
+  new_value := strconv.Itoa(int(h))
+  return new_value, previous_value
 }
 
 func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
@@ -90,32 +140,86 @@ func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
   kv.mu.Lock()
   defer kv.mu.Unlock()
 
-  seq_num := kvpaxos.last_seq_done + 1
-  op = Op{args.Key, args.Value, seq_num, args.RequestID}
-  //decided, op_v1 := px.Status(seq_num)
-  // request_done, ok := kv.idstore[args.RequestID]
-  // if ok{
-  //   if request_done == args.Value{
-  //     // Request already completed
-  //     reply.Err = "OK"
-  //     return nil
-  //   }
-  // }
+  //fmt.Println("Put Operation", args.Key, args.Value, args.DoHash)
+  // Check if the request is already completed, works for both Put / PutHash()
+  _, done := kv.idstore[args.RequestID]
+  if done{
+    reply.Err = "OK"
+    reply.PreviousValue = kv.idstore[args.RequestID]
+    return nil
+  }
 
-  for {
+  seq_num := kv.last_seq_done + 1
 
-    px.Start(seq_num, op)
-    v1:= kv.Wait(seq_num)
+  if !args.DoHash {
+    op := Op{args.Key, args.Value, seq_num, args.RequestID, "Put"}
+    for {
+      //fmt.Println("Start() seq_num: ", seq_num)
+      kv.px.Start(seq_num, op)
+      v1 := kv.Wait(seq_num)
 
-    if v1.RequestID == op.RequestID{
-      // The request has been completed
-      break
+      if v1.RequestID == op.RequestID{
+        // The request has been completed
+        kv.Apply(v1)
+        break
+      }
+      // Apply the operation
+      kv.Apply(v1)
+      seq_num+=1
+      op = Op{args.Key, args.Value, seq_num, args.RequestID, "Put"}
+    } 
+    
+    //fmt.Println("Put consensus completed", seq_num, args.Key, args.Value)
+    // kv.kvstore[args.Key] = args.Value
+    // kv.idstore[args.RequestID] = args.Value
+    
+    reply.Err = "OK"
+    reply.PreviousValue = args.Value
+
+    kv.last_seq_done = seq_num
+    kv.px.Done(seq_num)
+    kv.px.Min()
+  } else{
+
+    op := Op{args.Key, args.Value, seq_num, args.RequestID, "PutHash"}
+    for {
+      //fmt.Println("Start() seq_num: ", seq_num)
+      kv.px.Start(seq_num, op)
+      v1:= kv.Wait(seq_num)
+
+      if v1.RequestID == op.RequestID{
+        // The request has been completed
+        //kv.Apply(v1)
+
+        break
+      }
+      // Apply the operation
+      kv.Apply(v1)
+      seq_num+=1
+      op = Op{args.Key, args.Value, seq_num, args.RequestID, "PutHash"}
+    } 
+    
+    //fmt.Println("PutHash consensus completed", seq_num, args.Key, args.Value)
+    
+    //////////////
+    _, done := kv.idstore[op.RequestID]
+    if !done {
+      new_value, previous_value := kv.compute_hash(args.Key, args.Value)
+      kv.kvstore[args.Key] = new_value
+      kv.idstore[args.RequestID] = previous_value
+      reply.PreviousValue = previous_value
+    } else {
+      reply.PreviousValue = kv.idstore[args.RequestID]
     }
-    seq_num++
-  } 
+    reply.Err = "OK"
+    
 
-  ForwardPut(op)
-  reply.Err = "OK"
+    kv.last_seq_done = seq_num
+    kv.px.Done(seq_num)
+    kv.px.Min()
+
+  }
+
   return nil
 }
 
@@ -141,8 +245,8 @@ func StartServer(servers []string, me int) *KVPaxos {
 
   kv := new(KVPaxos)
   kv.me = me
-  pb.kvstore = make(map[string]string)
-  pb.idstore = make(map[int64]*Op)
+  kv.kvstore = make(map[string]string)
+  kv.idstore = make(map[int64]string)
   // Your initialization code here.
 
   rpcs := rpc.NewServer()

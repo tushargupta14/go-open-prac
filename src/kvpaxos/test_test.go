@@ -72,8 +72,9 @@ func TestBasic(t *testing.T) {
   check(t, ck, "a", "aa")
 
   cka[1].Put("a", "aaa")
-
+  //fmt.Println("------------------Here-------------------------")
   check(t, cka[2], "a", "aaa")
+  //fmt.Println("------------------Here-------------------------")
   check(t, cka[1], "a", "aaa")
   check(t, ck, "a", "aaa")
 
@@ -379,6 +380,7 @@ func TestUnreliable(t *testing.T) {
         }
         myck := MakeClerk(sa)
         key := strconv.Itoa(me)
+        //fmt.Println("Key", key, "------------------------------------------")
         pv := myck.Get(key)
         ov := myck.PutHash(key, "0")
         if ov != pv {
@@ -387,6 +389,7 @@ func TestUnreliable(t *testing.T) {
         ov = myck.PutHash(key, "1")
         pv = NextValue(pv, "0")
         if ov != pv {
+          //fmt.Println("Key added", "1", "------------------------------------------")
           t.Fatalf("wrong value; expected %s but got %s", pv, ov)
         }
         ov = myck.PutHash(key, "2")

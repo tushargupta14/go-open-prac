@@ -2,6 +2,8 @@ package kvpaxos
 
 import "net/rpc"
 import "fmt"
+import "crypto/rand"
+import "math/big"
 
 type Clerk struct {
   servers []string
@@ -12,7 +14,7 @@ type Clerk struct {
 func MakeClerk(servers []string) *Clerk {
   ck := new(Clerk)
   ck.servers = servers
-  ck.seq = -1
+  //ck.seq = -1
   // You'll have to add code here.
   return ck
 }
@@ -63,7 +65,24 @@ func call(srv string, rpcname string,
 //
 func (ck *Clerk) Get(key string) string {
   // You will have to modify this function.
-  return ""
+  uid := nrand()
+  args := GetArgs{key, uid}
+  var reply GetReply
+
+  i := 0
+  for {
+    //fmt.Println("Get", i)
+    ok := call(ck.servers[i], "KVPaxos.Get", &args, &reply)
+    if ok && reply.Err == "OK"{
+       break
+    }
+    i++
+    if i >= len(ck.servers){
+      i = 0
+    }
+  }
+
+  return reply.Value
 }
 
 //
@@ -78,7 +97,7 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 
   i := 0
   for {
-    ok = call(server[i], "KVPaxos.Put", &args, &reply)
+    ok := call(ck.servers[i], "KVPaxos.Put", &args, &reply)
     if ok && reply.Err == "OK"{
        break
     }
@@ -87,12 +106,7 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
       i = 0
     }
   }
-  // for i, server := range ck.servers{
-  //   ok = call(server, "KVPaxos.Put", &args, &reply)
-  //   if ok && reply.Err = "OK"{
-  //     break
-  //   }
-  // } 
+
   return ""
 }
 
