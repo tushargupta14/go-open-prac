@@ -12,10 +12,17 @@ type Clerk struct {
 func MakeClerk(servers []string) *Clerk {
   ck := new(Clerk)
   ck.servers = servers
+  ck.seq = -1
   // You'll have to add code here.
   return ck
 }
 
+func nrand() int64 {
+  max := big.NewInt(int64(1) << 62)
+  bigx, _ := rand.Int(rand.Reader, max)
+  x := bigx.Int64()
+  return x
+ }
 //
 // call() sends an RPC to the rpcname handler on server srv
 // with arguments args, waits for the reply, and leaves the
@@ -65,6 +72,27 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
   // You will have to modify this function.
+  uid := nrand()
+  args := PutArgs{key, value, dohash, uid}
+  var reply PutReply
+
+  i := 0
+  for {
+    ok = call(server[i], "KVPaxos.Put", &args, &reply)
+    if ok && reply.Err == "OK"{
+       break
+    }
+    i++
+    if i >= len(ck.servers){
+      i = 0
+    }
+  }
+  // for i, server := range ck.servers{
+  //   ok = call(server, "KVPaxos.Put", &args, &reply)
+  //   if ok && reply.Err = "OK"{
+  //     break
+  //   }
+  // } 
   return ""
 }
 

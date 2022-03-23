@@ -12,7 +12,8 @@ type PutArgs struct {
   // You'll have to add definitions here.
   Key string
   Value string
-  DoHash bool  // For PutHash
+  DoHash bool
+  RequestID int64  // For PutHash
   // You'll have to add definitions here.
   // Field names must start with capital letters,
   // otherwise RPC will break.

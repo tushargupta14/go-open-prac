@@ -25,6 +25,10 @@ type Op struct {
   // Your definitions here.
   // Field names must start with capital letters,
   // otherwise RPC will break.
+  Key string
+  Value string
+  Seq int
+  RequestID int64
 }
 
 type KVPaxos struct {
@@ -34,7 +38,9 @@ type KVPaxos struct {
   dead bool // for testing
   unreliable bool // for testing
   px *paxos.Paxos
-
+  last_seq_done int
+  kvstore map[string]string
+  idstore map[int64]string
   // Your definitions here.
 }
 
@@ -44,9 +50,72 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
   return nil
 }
 
+func (kv *KVPaxos) Wait(seq int) interface{}{
+  to := 10 * time.Millisecond
+  for {
+   decided, v1 := kv.px.Status(seq)
+   if decided {
+     return v1
+   }
+   time.Sleep(to)
+   if to < 10 * time.Second {
+     to *= 2
+   }
+ }
+}
+
+
+func (kv *KVPaxos) ForwardPut(key string , value string, requestID int64) error {
+
+  kv.mu.Lock()
+  defer kv.mu.Unlock()
+
+  if args.DoHash == false{
+      kv.kvstore[key] = value
+      kv.idstore[requestID] = value
+      return nil
+  } else if args.DoHash == true{
+      // pb.kvstore[args.Key] = args.Value
+      // pb.idstore[args.RequestID] = args.PreviousValue
+      // reply.Err = "OK"
+      fmt.Println("Implement Hash")
+      return nil
+  }
+
+  return nil
+}
+
 func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
   // Your code here.
+  kv.mu.Lock()
+  defer kv.mu.Unlock()
 
+  seq_num := kvpaxos.last_seq_done + 1
+  op = Op{args.Key, args.Value, seq_num, args.RequestID}
+  //decided, op_v1 := px.Status(seq_num)
+  // request_done, ok := kv.idstore[args.RequestID]
+  // if ok{
+  //   if request_done == args.Value{
+  //     // Request already completed
+  //     reply.Err = "OK"
+  //     return nil
+  //   }
+  // }
+
+  for {
+
+    px.Start(seq_num, op)
+    v1:= kv.Wait(seq_num)
+
+    if v1.RequestID == op.RequestID{
+      // The request has been completed
+      break
+    }
+    seq_num++
+  } 
+
+  ForwardPut(op)
+  reply.Err = "OK"
   return nil
 }
 
@@ -72,7 +141,8 @@ func StartServer(servers []string, me int) *KVPaxos {
 
   kv := new(KVPaxos)
   kv.me = me
-
+  pb.kvstore = make(map[string]string)
+  pb.idstore = make(map[int64]*Op)
   // Your initialization code here.
 
   rpcs := rpc.NewServer()
