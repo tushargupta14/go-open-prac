@@ -98,10 +98,12 @@ func (kv *KVPaxos) Wait(seq int) Op {
    if decided {
      return v1.(Op)
    }
-   time.Sleep(to)
    if to < 10 * time.Second {
-     to += 10 * time.Millisecond
+     //to += 10 * time.Millisecond
+      to *= 2
    }
+   time.Sleep(to)
+   
  }
 }
 

@@ -120,11 +120,11 @@ func TestBasic(t *testing.T) {
   cfx := ck.Query(-1)
   sa1 := cfx.Groups[gid1]
   if len(sa1) != 3 || sa1[0] != "x" || sa1[1] != "y" || sa1[2] != "z" {
-    t.Fatal("wrong servers for gid %v: %v\n", gid1, sa1)
+    t.Fatalf("wrong servers for gid %v: %v\n", gid1, sa1)
   }
   sa2 := cfx.Groups[gid2]
   if len(sa2) != 3 || sa2[0] != "a" || sa2[1] != "b" || sa2[2] != "c" {
-    t.Fatal("wrong servers for gid %v: %v\n", gid2, sa2)
+    t.Fatalf("wrong servers for gid %v: %v\n", gid2, sa2)
   }
 
   ck.Leave(gid1)
@@ -253,7 +253,7 @@ func TestBasic(t *testing.T) {
     ck.Join(int64(npara+1+i), []string{"a","b","c"})
   }
   c2 := ck.Query(-1)
-  for i := int64(1); i <= npara; i++ {
+  for i := int64(1024); i < npara+1024; i++ {
     for j := 0; j < len(c1.Shards); j++ {
       if c2.Shards[j] == i {
         if c1.Shards[j] != i {
@@ -271,7 +271,7 @@ func TestBasic(t *testing.T) {
     ck.Leave(int64(npara+1+i))
   }
   c3 := ck.Query(-1)
-  for i := int64(1); i <= npara; i++ {
+  for i := int64(1024); i < npara+1024; i++ {
     for j := 0; j < len(c1.Shards); j++ {
       if c2.Shards[j] == i {
         if c3.Shards[j] != i {
