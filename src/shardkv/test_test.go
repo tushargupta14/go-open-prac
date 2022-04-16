@@ -86,6 +86,7 @@ func TestBasic(t *testing.T) {
   fmt.Printf("Test: Basic Join/Leave ...\n")
 
   mck := shardmaster.MakeClerk(smh)
+  //fmt.Println("Join",gids[0])
   mck.Join(gids[0], ha[0])
 
   ck := MakeClerk(smh)
@@ -99,7 +100,7 @@ func TestBasic(t *testing.T) {
   if ck.Get("a") != ov {
     t.Fatalf("Get got wrong value")
   }
-
+  //fmt.Println("---------------Put Multiple values--------------------------")
   keys := make([]string, 10)
   vals := make([]string, len(keys))
   for i := 0; i < len(keys); i++ {
@@ -110,6 +111,8 @@ func TestBasic(t *testing.T) {
 
   // are keys still there after joins?
   for g := 1; g < len(gids); g++ {
+    //fmt.Println("-----------------------Join GIDs-----------------")
+    //fmt.Println("Join",gids[g])
     mck.Join(gids[g], ha[g])
     time.Sleep(1 * time.Second)
     for i := 0; i < len(keys); i++ {
@@ -125,6 +128,7 @@ func TestBasic(t *testing.T) {
   
   // are keys still there after leaves?
   for g := 0; g < len(gids)-1; g++ {
+    //fmt.Println("-----------------------Leave GIDs-----------------")
     mck.Leave(gids[g])
     time.Sleep(1 * time.Second)
     for i := 0; i < len(keys); i++ {
@@ -154,7 +158,7 @@ func TestMove(t *testing.T) {
 
   // insert one key per shard
   for i := 0; i < shardmaster.NShards; i++ {
-    ck.Put(string('0'+i), string('0'+i))
+    ck.Put("0"+strconv.Itoa(i) , "0"+ strconv.Itoa(i))
   }
 
   // add group 1.
@@ -163,7 +167,7 @@ func TestMove(t *testing.T) {
   
   // check that keys are still there.
   for i := 0; i < shardmaster.NShards; i++ {
-    if ck.Get(string('0'+i)) != string('0'+i) {
+    if ck.Get("0"+strconv.Itoa(i)) != "0"+strconv.Itoa(i) {
       t.Fatalf("missing key/value")
     }
   }
@@ -178,8 +182,8 @@ func TestMove(t *testing.T) {
   for i := 0; i < shardmaster.NShards; i++ {
     go func(me int) {
       myck := MakeClerk(smh)
-      v := myck.Get(string('0'+me))
-      if v == string('0'+me) {
+      v := myck.Get("0"+strconv.Itoa(me))
+      if v == "0"+strconv.Itoa(me) {
         mu.Lock()
         count++
         mu.Unlock()

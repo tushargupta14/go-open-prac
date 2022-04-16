@@ -5,11 +5,15 @@ import "net/rpc"
 import "time"
 import "sync"
 import "fmt"
+//import "crypto/rand"
+import "math/rand"
 
 type Clerk struct {
   mu sync.Mutex // one RPC at a time
   sm *shardmaster.Clerk
   config shardmaster.Config
+  //transactionId int64
+  //clientID  int64
   // You'll have to modify Clerk.
 }
 
@@ -19,9 +23,36 @@ func MakeClerk(shardmasters []string) *Clerk {
   ck := new(Clerk)
   ck.sm = shardmaster.MakeClerk(shardmasters)
   // You'll have to modify MakeClerk.
+  ck.config = ck.sm.Query(-1)
+  //ck.transactionId = 1
+  //ck.clientID = nrand()
   return ck
 }
 
+// func nrand() int64 {
+//   max := big.NewInt(int64(1) << 62)
+//   bigx, _ := rand.Int(rand.Reader, max)
+//   x := bigx.Int64()
+//   return x
+// }
+
+// lock needed
+//var globalId int64 = 0
+
+// generate unique request id:
+// ClientID-TimeStamp-ClientMonotonicallyIncreasingTransactionID-
+// HighProbabilityUniqueRandomTransactionID-GlobalID
+// func (ck *Clerk) generateID() string {
+//   var ret string
+//   ck.transactionId++
+//   atomic.AddInt64(&globalId, 1)
+//   ret = strconv.FormatInt(ck.clientID, 10) + "-" +
+//     time.Now().String() + "-" +
+//     strconv.FormatInt(ck.transactionId, 10) + "-" +
+//     strconv.FormatInt(nrand(), 10) + "-" +
+//     strconv.FormatInt(globalId, 10)
+//   return ret
+// }
 //
 // call() sends an RPC to the rpcname handler on server srv
 // with arguments args, waits for the reply, and leaves the
@@ -92,6 +123,7 @@ func (ck *Clerk) Get(key string) string {
       for _, srv := range servers {
         args := &GetArgs{}
         args.Key = key
+        args.ID = rand.Int63()
         var reply GetReply
         ok := call(srv, "ShardKV.Get", args, &reply)
         if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
@@ -131,6 +163,7 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
         args.Key = key
         args.Value = value
         args.DoHash = dohash
+        args.ID = rand.Int63()
         var reply PutReply
         ok := call(srv, "ShardKV.Put", args, &reply)
         if ok && reply.Err == OK {

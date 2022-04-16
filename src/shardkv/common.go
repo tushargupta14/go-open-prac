@@ -20,7 +20,8 @@ type Err string
 type PutArgs struct {
   Key string
   Value string
-  DoHash bool  // For PutHash
+  DoHash bool
+  ID int64  // For PutHash
   // You'll have to add definitions here.
   // Field names must start with capital letters,
   // otherwise RPC will break.
@@ -34,6 +35,7 @@ type PutReply struct {
 
 type GetArgs struct {
   Key string
+  ID int64
   // You'll have to add definitions here.
 }
 
@@ -42,7 +44,16 @@ type GetReply struct {
   Value string
 }
 
+type ReconfArgs struct{
+  ID int64
+  KVstore map[string]string
+  IDstore map[int64]string
+  Shard int
+}
 
+type ReconfReply struct{
+    
+} 
 func hash(s string) uint32 {
   h := fnv.New32a()
   h.Write([]byte(s))
