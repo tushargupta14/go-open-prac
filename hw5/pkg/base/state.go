@@ -186,7 +186,29 @@ func (s *State) isMessageReachable(index int) (bool, *State) {
 
 func (s *State) HandleMessage(index int, deleteMessage bool) (result []*State) {
 	//TODO: implement it
-	panic("implement me")
+
+	message := s.Network[index]
+	to := message.To()
+	nextStates := make([]*State, 0, 4)
+
+	_, ok := s.nodes[to]
+	if ok {
+		affectedNode := s.nodes[to]
+		newNodes := affectedNode.MessageHandler(message)
+
+		for _, node := range newNodes {
+			newState := s.Inherit(HandleEvent(message))
+			newState.UpdateNode(to, node)
+			nextStates = append(nextStates, newState)
+			if deleteMessage {
+				newState.DeleteMessage(index)
+			}
+		}
+
+		//newState.DeleteMessage(index)
+		return nextStates
+	}
+	return nil
 }
 
 func (s *State) DeleteMessage(index int) {
@@ -226,16 +248,18 @@ func (s *State) NextStates() []*State {
 			continue
 		}
 
-		// TODO: Drop off a message
 		if s.isDropOff {
+			newState = s.Inherit(DropOffEvent(s.Network[i]))
+			newState.DeleteMessage(i)
+			nextStates = append(nextStates, newState)
 		}
+		newStates := s.HandleMessage(i, true)
+		nextStates = append(nextStates, newStates...)
 
-		// TODO: Message arrives Normally. (use HandleMessage)
-
-		// TODO: Message arrives but the message is duplicated. The same message may come later again
 		// (use HandleMessage)
 		if s.isDuplicate {
-
+			newStates = s.HandleMessage(i, false)
+			nextStates = append(nextStates, newStates...)
 		}
 
 	}
@@ -244,17 +268,24 @@ func (s *State) NextStates() []*State {
 	// Weird feature in Go
 	for _, address := range s.addresses {
 		node := s.nodes[address]
-
+		newStates := s.TriggerNodeTimer(address, node)
 		//TODO: call the timer (use TriggerNodeTimer)
+		nextStates = append(nextStates, newStates...)
 	}
 
 	return nextStates
 }
 
 func (s *State) TriggerNodeTimer(address Address, node Node) []*State {
-	//TODO: implement it
-	panic("implement me")
+	nextStates := make([]*State, 0, 4)
+	newNodes := node.TriggerTimer()
 
+	for _, node := range newNodes {
+		newState := s.Inherit(TriggerEvent(address, node.NextTimer()))
+		newState.UpdateNode(address, node)
+		nextStates = append(nextStates, newState)
+	}
+	return nextStates
 }
 
 func (s *State) RandomNextState() *State {
@@ -265,7 +296,7 @@ func (s *State) RandomNextState() *State {
 		}
 		timerAddresses = append(timerAddresses, addr)
 	}
-
+	//fmt.Println(len(s.Network) + len(timerAddresses))
 	roll := rand.Intn(len(s.Network) + len(timerAddresses))
 
 	if roll < len(s.Network) {
@@ -275,12 +306,41 @@ func (s *State) RandomNextState() *State {
 			return newState
 		}
 
+		if s.isDropOff {
+			newState = s.Inherit(DropOffEvent(s.Network[roll]))
+			newState.DeleteMessage(roll)
+			return newState
+		}
+
+		// (use HandleMessage)
+		if s.isDuplicate {
+			newStates := s.HandleMessage(roll, false)
+			if len(newStates) == 0 {
+				return nil
+			}
+			randInt := rand.Intn(len(newStates))
+			return newStates[randInt]
+		}
 		//TODO: handle message and return one state
+		newStates := s.HandleMessage(roll, true)
+
+		if len(newStates) == 0 {
+			return nil
+		}
+
+		randInt := rand.Intn(len(newStates))
+		return newStates[randInt]
 	}
 
-	// TODO: trigger timer and return one state
 	address := timerAddresses[roll-len(s.Network)]
 	node := s.nodes[address]
+	newStates := s.TriggerNodeTimer(address, node)
+	//fmt.Println("Length", len(newStates))
+	if len(newStates) == 0 {
+		return nil
+	}
+	randInt := rand.Intn(len(newStates))
+	return newStates[randInt]
 
 }
 

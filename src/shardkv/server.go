@@ -63,7 +63,7 @@ func (kv *ShardKV) applyChange(op Op) (Err, string) {
     // Case 1: Put
 
     // check if already applied?
-    //fmt.Println("Apply Put", op.Key, ":", op.Value, "DoHash:", op.DoHash)
+    fmt.Println("Apply Put", op.Key, ":", op.Value, "DoHash:", op.DoHash)
     shardNum := key2shard(op.Key)
     _, found := kv.visitedRequests[shardNum]
     if found {
@@ -119,7 +119,7 @@ func (kv *ShardKV) applyChange(op Op) (Err, string) {
   } else if op.Op_type == "Get" {
     // Case 2: Get, If key present in DB return value else return ErrNoKey.
     shardNum := key2shard(op.Key)
-    //fmt.Println("Apply Get", op.Key, "Shard", shardNum)
+    fmt.Println("Apply Get", op.Key, "Shard", shardNum)
     
     value, found := kv.kvstore[shardNum][op.Key]
     //fmt.Println(kv.kvstore)
@@ -135,64 +135,79 @@ func (kv *ShardKV) applyChange(op Op) (Err, string) {
     old_conf := kv.config
     curr_gid := kv.gid
 
-    if new_conf.Num <= old_conf.Num{
+    if old_conf.Num == 0 {
+      kv.config = new_conf
       return "", ""
     }
-    //fmt.Println("Apply Reconf", old_conf.Shards, old_conf.Num, "-->", new_conf.Shards, new_conf.Num)
-    shards_in_old := make([]int, len(old_conf.Shards))
+    if new_conf.Num <= old_conf.Num {
+      return "", ""
+    }
+    fmt.Println("Apply Reconf", old_conf.Shards, old_conf.Num, "-->", new_conf.Shards, new_conf.Num)
+    shards_to_move := make([]bool, len(old_conf.Shards))
 
     // get current shards
-    for i,_ := range old_conf.Shards{
-      if old_conf.Shards[i] == kv.gid{
-        shards_in_old[i] = 1
-      }
+    // for i,_ := range old_conf.Shards{
+    //   if old_conf.Shards[i] == kv.gid{
+    //     shards_in_old[i] = 1
+    //   }
+    // }
+    // //fmt.Println("Shards to shift", shards_in_old)
+    // // get shards that changed from the current
+    for i:=0; i < len(new_conf.Shards); i++{
+      shards_to_move[i] = (new_conf.Shards[i]==curr_gid) && !(old_conf.Shards[i]==curr_gid)
     }
-    //fmt.Println("Shards to shift", shards_in_old)
-    // get shards that changed from the current
-    gid_shard_map := make(map[int64]int)
-    for i,_ := range new_conf.Shards{
-      if shards_in_old[i]==1 && new_conf.Shards[i] != curr_gid{
-        // shard data needs to be transferred
-        gid_shard_map[new_conf.Shards[i]] = i
-      }
-    }
-
     // send the data to the respective GIDs
+    gid_shard_map := make(map[int64][]int)
+    for i,_ := range new_conf.Shards{
+      if shards_to_move[i] {
+        // shard data needs to be transferred
+        gid_shard_map[new_conf.Shards[i]] = append(gid_shard_map[new_conf.Shards[i]],i)
+      }
+    }
+    //fmt.Println("Shards to move", shards_to_move)
+    fmt.Println("Apply Reconf, Ready to send", gid_shard_map)
 
-    for ngid, shardNum := range gid_shard_map{
+    for ngid, shards := range gid_shard_map{
 
       // get all servers of the gid
       servers, ok := new_conf.Groups[ngid]
       if ok {
         for _, srv := range servers {
-          args := &ReconfArgs{}
-          args.KVstore = make(map[string]string)
-          args.IDstore = make(map[int64]string)
-          _, ok := kv.kvstore[shardNum]
-          if ok {
-            for k,v := range kv.kvstore[shardNum]{
-              args.KVstore[k] = v
+
+          for shard,_ := range shards{
+            args := &ReconfArgs{}
+            args.KVstore = make(map[string]string)
+            args.IDstore = make(map[int64]string)
+            _, ok := kv.kvstore[shard]
+            if ok {
+              for k,v := range kv.kvstore[shard]{
+                args.KVstore[k] = v
+              }
+              
+              for k,v := range kv.visitedRequests[shard]{
+                args.IDstore[k] = v
+              }
             }
-            
-            for k,v := range kv.visitedRequests[shardNum]{
-              args.IDstore[k] = v
+            fmt.Println("Calling Send..with", args.KVstore)
+            args.ID = rand.Int63()
+            var reply ReconfReply
+            done:= call(srv, "ShardKV.Update", args, &reply)
+            if done {
+              break
             }
-          }
+          } 
           
-          args.ID = rand.Int63()
-          var reply ReconfReply
-          call(srv, "ShardKV.Update", args, &reply)
         } 
       }
     }
     
-
+    fmt.Println("Return after Apply Reconf")
     kv.config = new_conf
 
     return "", ""
   } else if op.Op_type == "Update"{
 
-    //fmt.Println("Apply Update", op.KVstore)
+    fmt.Println("Apply Update", op.KVstore)
     kv.kvstore[op.Shard] = make(map[string]string)
     kv.visitedRequests[op.Shard] = make(map[int64]string)
 
@@ -212,6 +227,7 @@ func (kv *ShardKV) applyChange(op Op) (Err, string) {
 func (kv *ShardKV) makeAgreementAndApplyChange(op Op) (Err, string) {
 
   // increase sequence number.
+  fmt.Println("Make Agreement for Op: ", op.Op_type)
   seq := kv.globalSeq + 1
 
   // Retry till this operation is entered into log.
@@ -234,6 +250,7 @@ func (kv *ShardKV) makeAgreementAndApplyChange(op Op) (Err, string) {
     kv.applyChange(v.(Op))
   }
   // Now we can apply our op, and return the value
+  fmt.Println("Apply after Agreement for Op: ", op.Op_type)
   ret1, ret2 := kv.applyChange(op)
 
   // Update global seq
@@ -261,17 +278,12 @@ func (kv *ShardKV) WaitForAgreement(seq int) interface{} {
 
 func (kv *ShardKV) Update(args *ReconfArgs, reply *ReconfArgs) error {
 
-  kv.mu.Lock()
-  defer kv.mu.Unlock()
-
-  //shardNum := key2shard(args.Key)
-  // keyGID := kv.config.Shards[args.Shard]
-  // if keyGID != kv.gid{
-  //   //reply.Err = "ErrWrongGroup"
-  //   return nil
-  // }
+  // kv.mu.Lock()
+  // defer kv.mu.Unlock()
+  fmt.Println("RPC Received data as", args.KVstore)
   op := Op{Op_type: "Update", Shard: args.Shard, KVstore: args.KVstore, IDstore: args.IDstore, ID: rand.Int63()} 
-  //fmt.Println("RPC Received data as", args.KVstore)
+  
+  
   kv.makeAgreementAndApplyChange(op)
 
   return nil
@@ -306,7 +318,7 @@ func (kv *ShardKV) Put(args *PutArgs, reply *PutReply) error {
   kv.mu.Lock()
   defer kv.mu.Unlock()
 
-  //fmt.Println("Inside Put for Key", args.Key, "Value", args.Value)
+  fmt.Println("Inside Put for Key", args.Key, "Value", args.Value)
   shardNum := key2shard(args.Key)
   keyGID := kv.config.Shards[shardNum]
   if keyGID != kv.gid{
@@ -336,24 +348,24 @@ func (kv *ShardKV) Put(args *PutArgs, reply *PutReply) error {
 func (kv *ShardKV) tick() {
 
   kv.mu.Lock()
+  defer kv.mu.Unlock()
+  getConfig := kv.sm.Query(-1)
 
-  getConfig := kv.sm.Query(kv.config.Num + 1)
-
-  if getConfig.Num > kv.config.Num{
-
-    // Update needed
-    //fmt.Println("Config Changed, old: ", kv.config.Num, "New:", getConfig.Num)
+  if getConfig.Num != kv.config.Num{
+    fmt.Println("Config Changed, old: ",kv.config.Num, "New:", getConfig.Num, kv.me)
+    if getConfig.Num != kv.config.Num+1{
+      fmt.Println("Config Changed, old: ", kv.config.Num, "New:", getConfig.Num)
     //fmt.Println("Config received as new", getConfig.Shards)
+      getConfig = kv.sm.Query(kv.config.Num +1)
+      }
     op := Op{
-      ID: rand.Int63(),
-      Op_type: "Reconf",
-      newConfig: getConfig,
+    ID: rand.Int63(),
+    Op_type: "Reconf",
+    newConfig: getConfig,
     }
 
     kv.makeAgreementAndApplyChange(op)
   }
-
-  kv.mu.Unlock()
 }
 
 
