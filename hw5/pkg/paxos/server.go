@@ -68,7 +68,43 @@ func NewServer(peers []base.Address, me int, proposedValue interface{}) *Server 
 
 func (server *Server) MessageHandler(message base.Message) []base.Node {
 	//TODO: implement it
-	panic("implement me")
+
+	newNodes := make([]base.Node, 0, 3)
+	acceptmsg, ok := message.(*AcceptRequest)
+	var flag bool
+	if ok {
+		// Accept Phase
+		newNode := server.copy()
+		if acceptmsg.N >= newNode.n_p {
+			newNode.n_p = acceptmsg.N
+			newNode.n_a = acceptmsg.N
+			newNode.v_a = acceptmsg.V
+			flag = true
+
+		} else {
+			flag = false
+		}
+		res := &AcceptResponse{
+			CoreMessage: base.MakeCoreMessage(acceptmsg.To(), acceptmsg.From()),
+			Ok:          flag,
+			N_p:         newNode.n_p,
+			SessionId:   acceptmsg.SessionId,
+		}
+		newNode.SetResponse(res)
+		return []base.Node{newNode}
+	}
+
+	proposemsg, ok := message.(*ProposeRequest)
+	if ok {
+		// Propose phase
+
+	}
+
+	decidemsg, ok := message.(*DecideRequest)
+	if ok {
+		// Propose phase
+	}
+
 }
 
 // To start a new round of Paxos.
