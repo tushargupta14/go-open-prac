@@ -108,6 +108,10 @@ func (server *Server) MessageHandler(message base.Message) []base.Node {
 
 		newNodes := make([]base.Node, 0, 3)
 
+		if server.proposer.Responses[peer_idx] {
+			// Already given reponse
+			return []base.Node{server}
+		}
 		// Update responses
 		newNode := server.copy()
 		newNode.proposer.ResponseCount++
@@ -187,7 +191,10 @@ func (server *Server) MessageHandler(message base.Message) []base.Node {
 				break
 			}
 		}
-
+		if server.proposer.Responses[peer_idx] {
+			// Already given reponse
+			return []base.Node{server}
+		}
 		newNodes := make([]base.Node, 0, 3)
 
 		// Update responses
@@ -209,7 +216,7 @@ func (server *Server) MessageHandler(message base.Message) []base.Node {
 			decideNode.proposer.ResponseCount = 0
 			decideNode.proposer.SuccessCount = 0
 			decideNode.proposer.Phase = Decide
-
+			decideNode.agreedValue = newNode.proposer.V
 			messages := make([]base.Message, 0, 3)
 			for _, peer := range newNode.peers {
 				req := &DecideRequest{
