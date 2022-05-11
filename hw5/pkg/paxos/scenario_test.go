@@ -520,6 +520,9 @@ func s1GetAllAcceptRejects(s *base.State) bool {
 		return false
 	}
 	server := s.Nodes()["s1"].(*Server)
+	if server.proposer.Phase == Accept && server.proposer.ResponseCount == 3 && server.proposer.SuccessCount == 0 {
+		fmt.Println("P1 Get All Accept rejects")
+	}
 	return server.proposer.Phase == Accept && server.proposer.ResponseCount == 3 && server.proposer.SuccessCount == 0
 }
 
@@ -528,6 +531,9 @@ func s3GetAllAcceptRejects(s *base.State) bool {
 		return false
 	}
 	server := s.Nodes()["s3"].(*Server)
+	if server.proposer.Phase == Accept && server.proposer.ResponseCount == 3 && server.proposer.SuccessCount == 0 {
+		fmt.Println("P3 Get all rejects")
+	}
 	return server.proposer.Phase == Accept && server.proposer.ResponseCount == 3 && server.proposer.SuccessCount == 0
 }
 
@@ -537,7 +543,7 @@ func checksForNotTerminate() []func(s *base.State) bool {
 	checks := NotTerminate1()
 
 	checks = append(checks, s1GetAllAcceptRejects)
-
+	//fmt.Println("P1 rejects all Accept")
 	checks = append(checks, NotTerminate2()...)
 
 	checks = append(checks, s3GetAllAcceptRejects)
