@@ -1,7 +1,5 @@
 # Assignment 1: MapReduce
 
-### Due: Tuesday 02/01, 11:59:59pm
-
 ### Introduction
 
 In this assignment you'll build a MapReduce library as a way to learn the Go

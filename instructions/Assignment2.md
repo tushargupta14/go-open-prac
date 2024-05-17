@@ -1,8 +1,5 @@
 # Assignment 2: Primary/Backup Key/Value Service
 
-### Part A Due: Tuesday, 02/15, 11:59:59pm
-### Part B Due: Tuesday, 02/22, 11:59:59pm
-
 ### Introduction
 
 In the MapReduce assignment handling failures is relatively easy
