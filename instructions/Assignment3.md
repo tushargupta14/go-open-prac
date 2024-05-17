@@ -1,8 +1,5 @@
 # Assignment 3: Paxos-based Key/Value Service
 
-### Part A Due: Tuesday, 03/08, 11:59:59pm
-### Part B Due: Tuesday, 03/22, 11:59:59pm
-
 ### Introduction
 
 Your Assignment 2 depends on a single master view server to pick the primary.

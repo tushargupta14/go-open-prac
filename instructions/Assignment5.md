@@ -1,7 +1,5 @@
 # Assignment 5: Model Checking Paxos
 
-### All Parts Due: Tuesday 05/10, 11:59:59pm EST
-
 ### Introduction
 
 In this assignment you'll explore a new topic: **model checking of distributed systems**.  We'll build a bare-bones model checker, apply it to Paxos, and use it to examine various scenarios for Paxos reaching consensus.

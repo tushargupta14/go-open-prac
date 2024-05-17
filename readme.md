@@ -1,7 +1,16 @@
-# 4113 Assignments
-* [Assignment 0: Collaboration Policy](instructions/Assignment0.md)
-* [Assignment 1: MapReduce](instructions/Assignment1.md)
-* [Assignment 2: Primary-Backup Key/Value Service](instructions/Assignment2.md)
-* [Assignment 3: Paxos-based Key/Value Service](instructions/Assignment3.md)
-* [Assignment 4: Sharded Key/Value Service](instructions/Assignment4.md)
-* [Assignment 5: Model Checking Paxos](instructions/Assignment5.md)
+# MapReduce in GoLang
+
+## Table of Contents
+
+- [About](#about)
+- [Getting Started](#getting_started)
+
+## About <a name = "about"></a>
+
+The repository inlcudes code to implement a Distributed Map Reduce service in GoLang.
+## Getting Started <a name = "getting_started"></a>
+
+Only respective assignment files are included which need Go installation to run. More details on installation can be found [here](https://go.dev/doc/install).
+### Prerequisites
+
+GoLang knowledge is required.

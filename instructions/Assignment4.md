@@ -1,8 +1,5 @@
 # Assignment 4: Sharded Key/Value Service
 
-### Part A Due: Tuesday 04/05, 11:59:59pm
-### Part B Due: Friday, 04/15, 11:59:59pm
-
 ### Introduction
 
 In this assignment you'll build a key/value storage system that
